@@ -69,7 +69,7 @@ housing-data-visualization-py/
 | `feature/data-adapter` | 数据采集与导入 | 陈灵湘 | `backend/adapters/`、`scripts/`、`data/` |
 | `feature/backend-service` | 数据入库、版本、实时更新 | 魏铃峻霏 | `backend/repo/`、`backend/services/`、`backend/blueprints/data.py`、`backend/models/` |
 | `feature/frontend-dashboard` | 前端页面 | 占航溢 | `frontend/src/` |
-| `feature/ml-classifier` | 文本分类与相似检索 | 李艺森 | `backend/ml/`、`frontend/src/views/Pred.vue` |
+| `feature/ml-classifier` | 文本分类与相似检索 | 李艺森 | `backend/ml/`、`backend/blueprints/predict.py`、`frontend/src/views/Pred.vue` |
 | `feature/report-test` | 报告与测试 | 付惊安 | `backend/report/`、`backend/blueprints/report.py`、`tests/`、`docs/部署说明.md` |
 
 公共文件（`README.md`、`requirements*.txt`、`backend/app.py`、`backend/config.py`）由组长维护，
