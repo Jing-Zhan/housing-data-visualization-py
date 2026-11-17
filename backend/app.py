@@ -19,10 +19,12 @@ from backend.blueprints.ai import bp as ai_bp
 from backend.blueprints.dashboard import bp as dashboard_bp
 from backend.blueprints.data import bp as data_bp
 from backend.blueprints.domain import bp as domain_bp
+from backend.blueprints.predict import bp as predict_bp
+from backend.blueprints.report import bp as report_bp
 from backend.config import Config
 from backend.runtime import get_profile, init_runtime
 
-BLUEPRINTS = (dashboard_bp, data_bp, domain_bp, ai_bp)
+BLUEPRINTS = (dashboard_bp, data_bp, domain_bp, ai_bp, predict_bp, report_bp)
 
 
 def create_app(config_object=None) -> Flask:

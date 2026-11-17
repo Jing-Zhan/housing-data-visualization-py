@@ -28,30 +28,52 @@ housing-data-visualization-py/
 │  ├─ domain/                 # 领域配置层
 │  │  ├─ profile.py           #   领域配置加载与读取
 │  │  └─ profiles/            #   house.yaml / medical.yaml
-│  ├─ adapters/               # 数据源适配层（适配器模式）
+│  ├─ adapters/               # 数据源适配层（陈灵湘）
 │  │  ├─ base.py              #   抽象接口 DataSourceAdapter
 │  │  ├─ mock_adapter.py      #   演示用增量数据
 │  │  ├─ csv_adapter.py       #   离线 CSV / Excel
 │  │  ├─ crawler_adapter.py   #   链家 / 贝壳采集（待实现）
-│  │  ├─ api_adapter.py       #   开放数据 API（待实现）
+│  │  ├─ openapi_adapter.py   #   开放数据 API（待实现）
 │  │  └─ registry.py          #   适配器工厂
 │  ├─ blueprints/             # 接口层
 │  │  ├─ dashboard.py         #   大屏聚合接口
 │  │  ├─ data.py              #   数据管理接口
 │  │  ├─ ai.py                #   预测与对话接口
 │  │  └─ domain.py            #   领域配置接口
-│  ├─ services/               # 应用服务层
+│  ├─ services/               # 应用服务层（魏铃峻霏）
 │  │  ├─ kpi_service.py       #   指标计算
 │  │  └─ chart_service.py     #   图表数据组装
-│  ├─ repo/                   # 仓储层（SQL 收敛于此）
-│  ├─ models/schema.sql       # 建表脚本
+│  ├─ repo/                   # 仓储层（魏铃峻霏）
+│  ├─ models/schema.sql       # 建表脚本（魏铃峻霏）
+│  ├─ agent/                  # AI 对话与 Agent（占竞）
+│  ├─ ml/                     # 文本分类与相似检索（李艺森）
+│  ├─ report/                 # 报告生成（付惊安）
 │  └─ legacy/                 # 原医疗系统实现（对照与回归）
-├─ frontend/                  # Vue 2 大屏前端（沿用原工程）
-├─ docs/                      # 需求、UML、分工与设计文档
-├─ scripts/                   # 初始化与导入脚本
-├─ tests/                     # 单元测试
+├─ frontend/                  # Vue 2 大屏前端（占航溢）
+├─ docs/                      # 需求、UML、分工与设计文档（占竞）
+├─ scripts/                   # 初始化、导入、训练脚本
+├─ tests/                     # 单元测试（付惊安）
 └─ .github/                   # Issue / PR 模板与 CI
 ```
+
+## 分支与工作目录
+
+每个功能分支对应一名成员和一个模块，分支名、负责人、工作目录如下。改代码时只动自己目录下的文件，
+跨目录的改动先在 Issue 里说明，避免互相覆盖。
+
+| 分支 | 负责模块 | 负责人 | 工作目录 |
+|---|---|---|---|
+| `main` | 稳定版本，用于演示与提交 | — | — |
+| `develop` | 集成分支，功能先合到这里 | — | — |
+| `feature/llm-chat` | AI 对话与 Agent | 占竞 | `backend/agent/`、`backend/blueprints/ai.py`、`frontend/src/views/AiChat.vue` |
+| `feature/data-adapter` | 数据采集与导入 | 陈灵湘 | `backend/adapters/`、`scripts/`、`data/` |
+| `feature/backend-service` | 数据入库、版本、实时更新 | 魏铃峻霏 | `backend/repo/`、`backend/services/`、`backend/blueprints/data.py`、`backend/models/` |
+| `feature/frontend-dashboard` | 前端页面 | 占航溢 | `frontend/src/` |
+| `feature/ml-classifier` | 文本分类与相似检索 | 李艺森 | `backend/ml/`、`frontend/src/views/Pred.vue` |
+| `feature/report-test` | 报告与测试 | 付惊安 | `backend/report/`、`backend/blueprints/report.py`、`tests/`、`docs/部署说明.md` |
+
+公共文件（`README.md`、`requirements*.txt`、`backend/app.py`、`backend/config.py`）由组长维护，
+其他人需要修改时先在 Issue 里提出来。
 
 ## 分支策略
 
