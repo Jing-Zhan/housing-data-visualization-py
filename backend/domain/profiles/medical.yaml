@@ -1,0 +1,46 @@
+# 医疗领域配置：保留原系统的语义，用于回归对照与领域切换演示
+name: medical
+title: 医疗问诊数据可视化与智能分析平台
+description: 好大夫在线问诊病例，原系统使用的领域配置
+data_source_hint: 好大夫在线问答页
+
+fields:
+  type:        {label: 疾病类型, example: 高血压}
+  gender:      {label: 性别,     example: 女}
+  age:         {label: 年龄,     example: 35, numeric: true, unit: 岁}
+  time:        {label: 就诊时间, example: 01.09}
+  content:     {label: 病情描述, example: 35岁，五月份发现高血压……}
+  docName:     {label: 医生,     example: 李明洲}
+  docHospital: {label: 医院,     example: 北京医院}
+  department:  {label: 科室,     example: 心内科}
+  detailUrl:   {label: 详情链接, example: https://www.haodf.com/bingcheng/8898339290.html}
+  height:      {label: 身高,     example: 163, numeric: true, unit: cm}
+  weight:      {label: 体重,     example: 63, numeric: true, unit: kg}
+  illDuration: {label: 病程,     example: 一月内}
+  allergy:     {label: 过敏史,   example: 无}
+
+charts:
+  age: 各年龄段患病占比
+  type: 疾病类型分布
+  list: 病例列表
+  top: 最多疾病类型
+  split: 男女比例
+  ring: 科室分布
+  mean: 身高与体重均值
+  word: 疾病关键词
+  filter: 筛选条件
+
+split:
+  field: gender
+  values: [男, 女]
+
+bins:
+  - {label: 0-10岁, max: 10}
+  - {label: 10-20岁, max: 20}
+  - {label: 20-30岁, max: 30}
+  - {label: 30-40岁, max: 40}
+  - {label: 40-50岁, max: 50}
+  - {label: 50-60岁, max: 60}
+  - {label: 60岁以上, max: 999}
+
+keywords: [高血压, 感冒, 骨折, 糖尿病, 冠心病, 肺炎, 胃炎, 哮喘]

@@ -1,0 +1,45 @@
+# 二手房领域配置：把 13 个通用槽位解释为居住数据语义
+name: house
+title: 城市居住数据可视化与智能分析平台
+description: 二手房在售房源数据，字段沿用 13 个通用槽位，切换领域时只改本文件
+data_source_hint: 链家 / 贝壳列表页，Kaggle 链家北京离线集
+
+fields:
+  type:        {label: 户型,       example: 2室1厅}
+  gender:      {label: 装修,       example: 精装}
+  age:         {label: 房龄,       example: 6, numeric: true, unit: 年}
+  time:        {label: 挂牌日期,   example: 03.15}
+  content:     {label: 标题与描述, example: 满五唯一 近地铁 精装两居}
+  docName:     {label: 经纪人,     example: 王××}
+  docHospital: {label: 小区,       example: ××花园}
+  department:  {label: 区域,       example: 朝阳区}
+  detailUrl:   {label: 详情链接,   example: https://example.com/house/1001}
+  height:      {label: 建筑面积,   example: 89.5, numeric: true, unit: ㎡}
+  weight:      {label: 挂牌总价,   example: 420, numeric: true, unit: 万}
+  illDuration: {label: 楼层,       example: 中楼层/共18层}
+  allergy:     {label: 朝向与权属, example: 南北 · 满五唯一}
+
+charts:
+  age: 各房龄段占比
+  type: 户型分布
+  list: 房源列表
+  top: 最热户型与区域
+  split: 装修类型占比
+  ring: 区域分布
+  mean: 面积与总价均值
+  word: 卖点关键词
+  filter: 筛选条件
+
+split:
+  field: gender
+  values: [精装, 简装]
+
+bins:
+  - {label: 5年内, max: 5}
+  - {label: 5-10年, max: 10}
+  - {label: 10-15年, max: 15}
+  - {label: 15-20年, max: 20}
+  - {label: 20-30年, max: 30}
+  - {label: 30年以上, max: 999}
+
+keywords: [满五唯一, 近地铁, 学区, 精装, 南北通透, 低楼层, 电梯房, 拎包入住]

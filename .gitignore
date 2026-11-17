@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# 环境变量与密钥
+.env
+.env.local
+*.pem
+
+# 数据库与数据文件
+*.sqlite
+*.db
+data/*.csv
+!data/sample_house.csv
+
+# 模型与二进制
+*.pth
+*.pkl
+*.npy
+*.h5
+*.onnx
+backend/legacy/machine/bert-base-chinese/
+backend/legacy/spiders/models/
+backend/legacy/spiders/chromedriver.exe
+backend/legacy/spiders/temp*.csv
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-error.log*
+
+# 编辑器与系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 运行产物
+logs/
+*.log
+uploads/
+exports/

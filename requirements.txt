@@ -1,0 +1,8 @@
+# 框架运行依赖（轻量，CI 使用）
+Flask>=3.0
+flask-cors>=4.0
+python-dotenv>=1.0
+PyYAML>=6.0
+pandas>=2.0
+pymysql>=1.1
+pytest>=8.0
