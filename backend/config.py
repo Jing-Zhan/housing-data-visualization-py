@@ -27,6 +27,10 @@ class Config:
     DOMAIN_DIR = BASE_DIR / "domain" / "profiles"
     LEGACY_DIR = BASE_DIR / "legacy"
 
+    # 定时采集（需求 7.3：演示模式每 30 秒，采集模式按小时）
+    SCHEDULER_ENABLED = os.getenv("SCHEDULER_ENABLED", "false").lower() in ("1", "true", "yes")
+    SCHEDULER_INTERVAL = int(os.getenv("SCHEDULER_INTERVAL", "30"))
+
     # 数据库
     DB_CONFIG = {
         "host": os.getenv("DB_HOST", "127.0.0.1"),

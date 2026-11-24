@@ -7,6 +7,7 @@ import io
 import tempfile
 from pathlib import Path
 
+import os
 from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request, send_file
@@ -83,58 +84,20 @@ def sources():
 
 @bp.post("/refresh")
 def refresh():
-    """重新采集并落库：采集 → 入库（去重+版本快照）→ 更新数据源状态 → 刷新大屏缓存。"""
+    """触发一次采集并落库：采集 → 入库（去重+版本快照）→ 更新数据源状态 → 刷新大屏缓存。"""
+    from backend.services.data_service import DataCollectionError, DatabaseUnavailable, collect_once
+
     app = current_app
-    adapter = get_adapter(app)
-    db_config = app.config["DB_CONFIG"]
-    case_repo = CaseRepository(db_config)
-    source_repo = SourceRepository(db_config)
-    code = adapter.key
-
-    if not case_repo.ping():
-        return jsonify({"code": 503, "message": "数据库不可用，无法入库", "data": None}), 503
-
-    source_repo.upsert_source(
-        code,
-        adapter.label,
-        source_type=adapter.kind,
-        description=f"由 /api/data/refresh 触发（DATA_SOURCE={code}）",
-    )
-    source_repo.record_run(code, "开始采集")
-
     try:
-        rows = adapter.fetch()
-    except Exception as exc:
-        source_repo.record_failure(code, f"采集失败：{exc}")
-        return jsonify({"code": 500, "message": f"采集失败：{exc}", "data": None}), 500
-
-    try:
-        result = case_repo.insert_with_version(
-            rows, action="refresh", description=f"{code} 采集入库"
-        )
-    except Exception as exc:
-        source_repo.record_failure(code, f"入库失败：{exc}")
-        return jsonify({"code": 500, "message": f"入库失败：{exc}", "data": None}), 500
-
-    message = f"采集 {len(rows)} 条，新增 {result.inserted}，跳过 {result.skipped}"
-    if result.completeness is not None and result.completeness < 0.9:
-        message += f"；字段完整率 {result.completeness:.0%} 低于 90%，请检查数据"
-    source_repo.record_success(code, delta=result.inserted, message=message)
+        info = collect_once(app)
+    except DatabaseUnavailable as exc:
+        return jsonify({"code": 503, "message": str(exc), "data": None}), 503
+    except DataCollectionError as exc:
+        return jsonify({"code": 500, "message": str(exc), "data": None}), 500
 
     cached_rows = refresh_rows(app)
-
-    return jsonify(
-        {
-            "code": 200,
-            "message": "success",
-            "data": {
-                "total": len(cached_rows),
-                "inserted": result.inserted,
-                "skipped": result.skipped,
-                "source": code,
-            },
-        }
-    )
+    info["total"] = len(cached_rows)
+    return jsonify({"code": 200, "message": "success", "data": info})
 
 
 @bp.get("/export")
@@ -276,3 +239,16 @@ def disable_source(code):
     if src is None:
         return jsonify({"code": 404, "message": "数据源不存在", "data": None}), 404
     return jsonify({"code": 200, "message": "success", "data": {"code": code, "enabled": False}})
+
+
+@bp.record
+def _setup_scheduler(state):
+    """注册蓝图时按配置启动定时采集（默认关闭，演示时在 .env 打开）。"""
+    app = state.app
+    if not app.config.get("SCHEDULER_ENABLED"):
+        return
+    if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        return  # debug 热重载的主进程，等子进程再启动，避免双重调度
+    from backend.services.scheduler_service import start_scheduler
+
+    start_scheduler(app, interval_seconds=app.config.get("SCHEDULER_INTERVAL", 30))
