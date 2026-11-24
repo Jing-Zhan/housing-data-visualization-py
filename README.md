@@ -40,19 +40,19 @@ housing-data-visualization-py/
 │  │  ├─ data.py              #   数据管理接口
 │  │  ├─ ai.py                #   预测与对话接口
 │  │  └─ domain.py            #   领域配置接口
-│  ├─ services/               # 应用服务层（魏铃峻霏）
+│  ├─ services/               # 应用服务层（魏铃峂霏）
 │  │  ├─ kpi_service.py       #   指标计算
 │  │  └─ chart_service.py     #   图表数据组装
-│  ├─ repo/                   # 仓储层（魏铃峻霏）
-│  ├─ models/schema.sql       # 建表脚本（魏铃峻霏）
+│  ├─ repo/                   # 仓储层（魏铃峂霏）
+│  ├─ models/schema.sql       # 建表脚本（魏铃峂霏）
 │  ├─ agent/                  # AI 对话与 Agent（占竞）
-│  ├─ ml/                     # 文本分类与相似检索（李艺森）
-│  ├─ report/                 # 报告生成（付惊安）
+│  ├─ ml/                     # 文本分类与相似检索（李艺淼）
+│  ├─ report/                 # 报告生成（付悰安）
 │  └─ legacy/                 # 原医疗系统实现（对照与回归）
 ├─ frontend/                  # Vue 2 大屏前端（占航溢）
 ├─ docs/                      # 需求、UML、分工与设计文档（占竞）
 ├─ scripts/                   # 初始化、导入、训练脚本
-├─ tests/                     # 单元测试（付惊安）
+├─ tests/                     # 单元测试（付悰安）
 └─ .github/                   # Issue / PR 模板与 CI
 ```
 
@@ -67,10 +67,10 @@ housing-data-visualization-py/
 | `develop` | 集成分支，功能先合到这里 | — | — |
 | `feature/llm-chat` | AI 对话与 Agent | 占竞 | `backend/agent/`、`backend/blueprints/ai.py`、`frontend/src/views/AiChat.vue` |
 | `feature/data-adapter` | 数据采集与导入 | 陈灵湘 | `backend/adapters/`、`scripts/`、`data/` |
-| `feature/backend-service` | 数据入库、版本、实时更新 | 魏铃峻霏 | `backend/repo/`、`backend/services/`、`backend/blueprints/data.py`、`backend/models/` |
+| `feature/backend-service` | 数据入库、版本、实时更新 | 魏铃峂霏 | `backend/repo/`、`backend/services/`、`backend/blueprints/data.py`、`backend/models/` |
 | `feature/frontend-dashboard` | 前端页面 | 占航溢 | `frontend/src/` |
-| `feature/ml-classifier` | 文本分类与相似检索 | 李艺森 | `backend/ml/`、`backend/blueprints/predict.py`、`frontend/src/views/Pred.vue` |
-| `feature/report-test` | 报告与测试 | 付惊安 | `backend/report/`、`backend/blueprints/report.py`、`tests/`、`docs/部署说明.md` |
+| `feature/ml-classifier` | 文本分类与相似检索 | 李艺淼 | `backend/ml/`、`backend/blueprints/predict.py`、`frontend/src/views/Pred.vue` |
+| `feature/report-test` | 报告与测试 | 付悰安 | `backend/report/`、`backend/blueprints/report.py`、`tests/`、`docs/部署说明.md` |
 
 公共文件（`README.md`、`requirements*.txt`、`backend/app.py`、`backend/config.py`）由组长维护，
 其他人需要修改时先在 Issue 里提出来。
@@ -98,7 +98,7 @@ feature/x        ●        ●
 1. 每个功能分支只改自己负责的模块目录，避免跨模块冲突。
 2. 提交信息使用 `feat: / fix: / docs: / refactor: / test: / chore:` 前缀。
 3. 合并前在本地执行 `pytest -q`，CI 通过后再合并。
-4. `develop` 合并到 `main` 由组长操作，合并后打标签（`v0.1`、`v0.2`…）。
+4. 所有功能一律先合并到 `develop`；`develop` 由组长亲自测试通过后，再由组长合并到 `main`。其他成员不直接向 `main` 提交或推送，合并到 `main` 后由组长打标签（`v0.1`、`v0.2`…）。
 
 ## 本地启动
 
@@ -136,6 +136,17 @@ cd backend/legacy
 python app.py
 python websocket_chat.py   # 对话服务，端口 5001
 ```
+
+## 自检与测试
+
+| 命令 | 说明 |
+|---|---|
+| `pytest -q` | 单元测试（领域配置、指标与图表计算、适配器） |
+| `python scripts/verify_data_module.py` | 入库模块自检：在临时库跑写入、去重、版本快照、回滚、异常数据过滤，逐项输出 PASS / FAIL，结束后自动删库（加 `--keep` 保留现场） |
+| `python -m backend.app` + 浏览器或接口工具 | 接口冒烟：`/api/health`、`/api/data/health`、`/api/data/refresh`、`/api/data/import` |
+
+`verify_data_module.py` 从仓库根目录的 `.env` 读取 `DB_*`，也可以直接用环境变量传，
+账号需要具备建库与删库权限（脚本只操作自己的临时库，不碰 `housinginfo`）。
 
 ## 配置项
 
