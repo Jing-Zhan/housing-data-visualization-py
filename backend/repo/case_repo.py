@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional
+from datetime import datetime
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional
 
 import pymysql
 from pymysql.cursors import DictCursor
@@ -24,11 +25,30 @@ SLOTS = (
 )
 
 
+class InsertResult(NamedTuple):
+    """批量写入结果：inserted 新增条数，skipped 重复跳过条数，completeness 字段完整率（0~1）。"""
+
+    inserted: int
+    skipped: int
+    completeness: Optional[float] = None
+
+
 class CaseRepository:
     """``cases`` 事实表的读写。"""
 
     def __init__(self, db_config: Dict[str, Any]) -> None:
         self.db_config = db_config
+
+    @staticmethod
+    def _completeness(rows: List[Dict[str, Any]]) -> Optional[float]:
+        """字段完整率：非空槽位数 / 总槽位数，返回 0~1。"""
+        total = len(rows) * len(SLOTS)
+        if not total:
+            return None
+        filled = sum(
+            1 for row in rows for slot in SLOTS if row.get(slot) not in (None, "")
+        )
+        return round(filled / total, 4)
 
     # ------------------------------------------------------------------ 连接
     def _connect(self) -> pymysql.connections.Connection:
@@ -54,40 +74,158 @@ class CaseRepository:
             cursor.execute(sql, (limit, offset))
             return list(cursor.fetchall())
 
-    def existing_urls(self, urls: Iterable[str]) -> set:
-        urls = [u for u in urls if u]
-        if not urls:
-            return set()
-        placeholders = ",".join(["%s"] * len(urls))
-        sql = f"SELECT detailUrl FROM cases WHERE detailUrl IN ({placeholders})"
-        with self._connect() as conn, conn.cursor() as cursor:
-            cursor.execute(sql, urls)
-            return {row["detailUrl"] for row in cursor.fetchall()}
-
     # ------------------------------------------------------------------ 写入
-    def insert_many(self, rows: Iterable[Dict[str, Any]]) -> int:
-        """按 detailUrl 去重后批量插入，返回新增条数。"""
+    def insert_many(self, rows: Iterable[Dict[str, Any]]) -> InsertResult:
+        """批量插入房源，按 ``detailUrl`` 唯一键去重，出错整批回滚。
+
+        返回 :class:`InsertResult`：``inserted`` 为新增条数，``skipped`` 为重复跳过条数。
+        """
         rows = list(rows)
         if not rows:
-            return 0
-        skip = self.existing_urls(row.get("detailUrl") for row in rows)
-        payload = [
-            tuple(row.get(slot) for slot in SLOTS)
-            for row in rows
-            if not (row.get("detailUrl") and row.get("detailUrl") in skip)
-        ]
-        if not payload:
-            return 0
-        sql = f"INSERT INTO cases ({', '.join(SLOTS)}) VALUES ({', '.join(['%s'] * len(SLOTS))})"
-        with self._connect() as conn, conn.cursor() as cursor:
-            cursor.executemany(sql, payload)
+            return InsertResult(0, 0)
+        payload = [tuple(row.get(slot) for slot in SLOTS) for row in rows]
+        sql = (
+            f"INSERT IGNORE INTO cases ({', '.join(SLOTS)}) "
+            f"VALUES ({', '.join(['%s'] * len(SLOTS))})"
+        )
+        conn = self._connect()
+        try:
+            with conn.cursor() as cursor:
+                cursor.executemany(sql, payload)
+                inserted = cursor.rowcount
             conn.commit()
-        return len(payload)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return InsertResult(
+            inserted=inserted,
+            skipped=len(payload) - inserted,
+            completeness=self._completeness(rows),
+        )
 
     # ------------------------------------------------------------------ 版本
-    def save_version(self, action: str, description: str, operator: str = "system", delta: int = 0) -> int:
-        """写入版本记录并生成整表快照（对应"实时更新"任务的审计需求）。
+    def _count_on(self, cursor) -> int:
+        cursor.execute("SELECT COUNT(*) AS total FROM cases")
+        return int(cursor.fetchone()["total"])
 
-        待实现：与 ``insert_many`` 放在同一事务中，避免快照与数据不一致。
+    def _insert_version(
+        self,
+        cursor,
+        action: str,
+        description: str,
+        operator: str,
+        delta: int,
+    ) -> int:
+        code = datetime.now().strftime("v%Y%m%d%H%M%S%f")
+        name = f"{action}-{code}"
+        cursor.execute(
+            "INSERT INTO data_versions "
+            "(name, version_code, operator, action, description, total_records, delta_records) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (name, code, operator, action, description, self._count_on(cursor), delta),
+        )
+        return cursor.lastrowid
+
+    def _snapshot(self, cursor, version_id: int) -> None:
+        cols = ", ".join(SLOTS)
+        cursor.execute(
+            f"INSERT INTO cases_snapshot (version_id, case_id, {cols}) "
+            f"SELECT %s, id, {cols} FROM cases",
+            (version_id,),
+        )
+
+    def save_version(self, action: str, description: str, operator: str = "system", delta: int = 0) -> int:
+        """写入版本记录并生成整表快照（独立事务），返回 version_id。"""
+        conn = self._connect()
+        try:
+            with conn.cursor() as cursor:
+                version_id = self._insert_version(cursor, action, description, operator, delta)
+                self._snapshot(cursor, version_id)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return version_id
+
+    def insert_with_version(
+        self,
+        rows: Iterable[Dict[str, Any]],
+        action: str = "import",
+        description: str = "",
+        operator: str = "system",
+    ) -> InsertResult:
+        """一个事务内完成：批量插入 + 写版本记录 + 整表快照。
+
+        数据写入与版本快照要么一起成功、要么一起回滚。全部重复（无新增）时不生成版本。
         """
-        raise NotImplementedError("版本快照待实现，见 docs/01-需求规格说明书.md")
+        rows = list(rows)
+        if not rows:
+            return InsertResult(0, 0)
+        payload = [tuple(row.get(slot) for slot in SLOTS) for row in rows]
+        sql = (
+            f"INSERT IGNORE INTO cases ({', '.join(SLOTS)}) "
+            f"VALUES ({', '.join(['%s'] * len(SLOTS))})"
+        )
+        conn = self._connect()
+        try:
+            with conn.cursor() as cursor:
+                cursor.executemany(sql, payload)
+                inserted = cursor.rowcount
+                if inserted:
+                    version_id = self._insert_version(cursor, action, description, operator, inserted)
+                    self._snapshot(cursor, version_id)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return InsertResult(
+            inserted=inserted,
+            skipped=len(payload) - inserted,
+            completeness=self._completeness(rows),
+        )
+
+    def list_versions(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """按时间倒序返回版本记录。"""
+        with self._connect() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name, version_code, operator, action, description, "
+                "created_at, total_records, delta_records "
+                "FROM data_versions ORDER BY id DESC LIMIT %s",
+                (limit,),
+            )
+            return list(cursor.fetchall())
+
+    def restore_version(self, version_id: int, operator: str = "system") -> int:
+        """用指定版本的整表快照覆盖 cases 表，并记录一次回滚动作。返回恢复条数。
+
+        回滚本身也是一次数据变更：恢复数据后，在同一事务内写入一条
+        ``action=restore`` 的版本记录并生成回滚后的新快照，保证可追溯。
+        """
+        cols = ", ".join(SLOTS)
+        conn = self._connect()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM cases")
+                cursor.execute(
+                    f"INSERT INTO cases (id, {cols}) "
+                    f"SELECT case_id, {cols} FROM cases_snapshot WHERE version_id = %s",
+                    (version_id,),
+                )
+                restored = cursor.rowcount
+                new_version_id = self._insert_version(
+                    cursor, "restore", f"从版本 {version_id} 回滚", operator, delta=0
+                )
+                self._snapshot(cursor, new_version_id)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return restored
