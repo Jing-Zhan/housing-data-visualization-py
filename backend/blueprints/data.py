@@ -183,7 +183,10 @@ def import_file():
 def sources_status():
     """数据源运行状态列表（来自 data_sources 表）。"""
     repo = SourceRepository(current_app.config["DB_CONFIG"])
-    sources = repo.list_sources()
+    try:
+        sources = repo.list_sources()
+    except Exception:
+        return jsonify({"code": 503, "message": "数据库不可用", "data": None}), 503
     for src in sources:
         src["last_run_at"] = str(src["last_run_at"])
         src["last_success_at"] = str(src["last_success_at"])
@@ -197,31 +200,39 @@ def data_health():
     case_repo = CaseRepository(db_config)
     source_repo = SourceRepository(db_config)
 
-    db_ok = case_repo.ping()
-    payload = {"db": "ok" if db_ok else "down"}
-    if db_ok:
+    try:
+        if not case_repo.ping():
+            return jsonify({"code": 503, "message": "数据库不可用", "data": None}), 503
         versions = case_repo.list_versions(50)
         sources = source_repo.list_sources()
-        now = datetime.now()
-        for src in sources:
-            success_at = src["last_success_at"]
-            src["last_success_seconds_ago"] = (
-                int((now - success_at).total_seconds()) if success_at else None
-            )
-            src["last_run_at"] = str(src["last_run_at"])
-            src["last_success_at"] = str(success_at)
-        latest = versions[0] if versions else None
-        if latest:
-            latest["created_at"] = str(latest["created_at"])
-        payload.update(
-            {
-                "cases_total": case_repo.count(),
+        cases_total = case_repo.count()
+    except Exception:
+        return jsonify({"code": 503, "message": "数据库不可用", "data": None}), 503
+
+    now = datetime.now()
+    for src in sources:
+        success_at = src["last_success_at"]
+        src["last_success_seconds_ago"] = (
+            int((now - success_at).total_seconds()) if success_at else None
+        )
+        src["last_run_at"] = str(src["last_run_at"])
+        src["last_success_at"] = str(success_at)
+    latest = versions[0] if versions else None
+    if latest:
+        latest["created_at"] = str(latest["created_at"])
+    return jsonify(
+        {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "db": "ok",
+                "cases_total": cases_total,
                 "versions_total": len(versions),
                 "latest_version": latest,
                 "sources": sources,
-            }
-        )
-    return jsonify({"code": 200, "message": "success", "data": payload})
+            },
+        }
+    )
 
 
 @bp.post("/sources/<code>/enable")
@@ -255,3 +266,36 @@ def _setup_scheduler(state):
     from backend.services.scheduler_service import start_scheduler
 
     start_scheduler(app, interval_seconds=app.config.get("SCHEDULER_INTERVAL", 30))
+
+
+@bp.get("/versions")
+def list_versions():
+    """版本列表，按时间倒序（FR-07：版本列表可查到对应记录）。"""
+    repo = CaseRepository(current_app.config["DB_CONFIG"])
+    if not repo.ping():
+        return jsonify({"code": 503, "message": "数据库不可用", "data": None}), 503
+    limit = min(int(request.args.get("limit", 20)), 100)
+    try:
+        items = repo.list_versions(limit=limit)
+    except Exception:
+        return jsonify({"code": 503, "message": "数据库不可用", "data": None}), 503
+    for item in items:
+        item["created_at"] = str(item["created_at"])
+    return jsonify(
+        {"code": 200, "message": "success", "data": {"total": len(items), "items": items}}
+    )
+
+
+@bp.post("/versions/<int:version_id>/restore")
+def restore_version(version_id):
+    """按版本回滚数据（FR-08）。"""
+    repo = CaseRepository(current_app.config["DB_CONFIG"])
+    try:
+        restored = repo.restore_version(version_id)
+    except ValueError as exc:
+        return jsonify({"code": 404, "message": str(exc), "data": None}), 404
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"code": 500, "message": f"回滚失败：{exc}", "data": None}), 500
+    return jsonify(
+        {"code": 200, "message": "success", "data": {"versionId": version_id, "restored": restored}}
+    )
