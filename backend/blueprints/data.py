@@ -157,7 +157,9 @@ def import_file():
         source_repo.record_failure("csv", f"入库失败：{exc}")
         return jsonify({"code": 500, "message": f"入库失败：{exc}", "data": None}), 500
 
-    message = f"导入 {len(rows)} 条，新增 {result.inserted}，跳过 {result.skipped}"
+    message = f"导入 {len(rows)} 条，新增 {result.inserted}，重复跳过 {result.skipped}"
+    if result.invalid:
+        message += f"，数据异常跳过 {result.invalid}"
     if result.completeness is not None and result.completeness < 0.9:
         message += f"；字段完整率 {result.completeness:.0%} 低于 90%，请检查数据"
     source_repo.record_success("csv", delta=result.inserted, message=message)
@@ -171,6 +173,7 @@ def import_file():
                 "parsed": len(rows),
                 "inserted": result.inserted,
                 "skipped": result.skipped,
+                "invalid": result.invalid,
             },
         }
     )

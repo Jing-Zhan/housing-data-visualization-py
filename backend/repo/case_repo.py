@@ -26,10 +26,12 @@ SLOTS = (
 
 
 class InsertResult(NamedTuple):
-    """批量写入结果：inserted 新增条数，skipped 重复跳过条数，completeness 字段完整率（0~1）。"""
+    """批量写入结果：inserted 新增条数，skipped 重复跳过条数，
+    invalid 数据质量不合格跳过条数，completeness 字段完整率（0~1）。"""
 
     inserted: int
     skipped: int
+    invalid: int = 0
     completeness: Optional[float] = None
 
 
@@ -49,6 +51,43 @@ class CaseRepository:
             1 for row in rows for slot in SLOTS if row.get(slot) not in (None, "")
         )
         return round(filled / total, 4)
+
+    # 数据质量规则（需求 7.4）：必填字段与数值范围兜底
+    REQUIRED_SLOTS = ("type", "content", "detailUrl")
+    RANGE_SLOTS = {
+        "height": (1.0, 1000.0),     # 建筑面积（㎡）
+        "weight": (1.0, 100000.0),   # 挂牌总价（万）
+    }
+
+    @staticmethod
+    def _to_float(value: Any) -> Optional[float]:
+        if value is None or value == "":
+            return None
+        try:
+            return float(str(value).replace(",", "").replace("㎡", "").replace("万", ""))
+        except (TypeError, ValueError):
+            return None
+
+    def _filter_valid(self, rows: List[Dict[str, Any]]) -> tuple:
+        """过滤数据质量不合格的行，返回 (有效行, 无效条数)。"""
+        valid: List[Dict[str, Any]] = []
+        invalid = 0
+        for row in rows:
+            missing = [s for s in self.REQUIRED_SLOTS if row.get(s) in (None, "")]
+            if missing:
+                invalid += 1
+                continue
+            out_of_range = [
+                slot
+                for slot, (lo, hi) in self.RANGE_SLOTS.items()
+                if (value := self._to_float(row.get(slot))) is not None
+                and not (lo <= value <= hi)
+            ]
+            if out_of_range:
+                invalid += 1
+                continue
+            valid.append(row)
+        return valid, invalid
 
     # ------------------------------------------------------------------ 连接
     def _connect(self) -> pymysql.connections.Connection:
@@ -76,14 +115,23 @@ class CaseRepository:
 
     # ------------------------------------------------------------------ 写入
     def insert_many(self, rows: Iterable[Dict[str, Any]]) -> InsertResult:
-        """批量插入房源，按 ``detailUrl`` 唯一键去重，出错整批回滚。
+        """批量插入房源：数据质量校验 → ``detailUrl`` 去重 → 单事务写入，出错整批回滚。
 
-        返回 :class:`InsertResult`：``inserted`` 为新增条数，``skipped`` 为重复跳过条数。
+        返回 :class:`InsertResult`：``inserted`` 新增条数，``skipped`` 重复跳过条数，
+        ``invalid`` 数据质量不合格跳过条数，``completeness`` 字段完整率。
         """
-        rows = list(rows)
-        if not rows:
+        all_rows = list(rows)
+        if not all_rows:
             return InsertResult(0, 0)
-        payload = [tuple(row.get(slot) for slot in SLOTS) for row in rows]
+        valid_rows, invalid = self._filter_valid(all_rows)
+        if not valid_rows:
+            return InsertResult(
+                inserted=0,
+                skipped=0,
+                invalid=invalid,
+                completeness=self._completeness(all_rows),
+            )
+        payload = [tuple(row.get(slot) for slot in SLOTS) for row in valid_rows]
         sql = (
             f"INSERT IGNORE INTO cases ({', '.join(SLOTS)}) "
             f"VALUES ({', '.join(['%s'] * len(SLOTS))})"
@@ -102,7 +150,8 @@ class CaseRepository:
         return InsertResult(
             inserted=inserted,
             skipped=len(payload) - inserted,
-            completeness=self._completeness(rows),
+            invalid=invalid,
+            completeness=self._completeness(all_rows),
         )
 
     # ------------------------------------------------------------------ 版本
@@ -158,14 +207,22 @@ class CaseRepository:
         description: str = "",
         operator: str = "system",
     ) -> InsertResult:
-        """一个事务内完成：批量插入 + 写版本记录 + 整表快照。
+        """一个事务内完成：数据质量校验 → 批量插入 + 写版本记录 + 整表快照。
 
         数据写入与版本快照要么一起成功、要么一起回滚。全部重复（无新增）时不生成版本。
         """
-        rows = list(rows)
-        if not rows:
+        all_rows = list(rows)
+        if not all_rows:
             return InsertResult(0, 0)
-        payload = [tuple(row.get(slot) for slot in SLOTS) for row in rows]
+        valid_rows, invalid = self._filter_valid(all_rows)
+        if not valid_rows:
+            return InsertResult(
+                inserted=0,
+                skipped=0,
+                invalid=invalid,
+                completeness=self._completeness(all_rows),
+            )
+        payload = [tuple(row.get(slot) for slot in SLOTS) for row in valid_rows]
         sql = (
             f"INSERT IGNORE INTO cases ({', '.join(SLOTS)}) "
             f"VALUES ({', '.join(['%s'] * len(SLOTS))})"
@@ -187,7 +244,8 @@ class CaseRepository:
         return InsertResult(
             inserted=inserted,
             skipped=len(payload) - inserted,
-            completeness=self._completeness(rows),
+            invalid=invalid,
+            completeness=self._completeness(all_rows),
         )
 
     def list_versions(self, limit: int = 50) -> List[Dict[str, Any]]:

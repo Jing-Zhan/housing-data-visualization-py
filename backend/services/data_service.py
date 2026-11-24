@@ -59,7 +59,9 @@ def collect_once(app: Flask) -> Dict[str, Any]:
         source_repo.record_failure(code, f"入库失败：{exc}")
         raise DataCollectionError(f"入库失败：{exc}") from exc
 
-    message = f"采集 {len(rows)} 条，新增 {result.inserted}，跳过 {result.skipped}"
+    message = f"采集 {len(rows)} 条，新增 {result.inserted}，重复跳过 {result.skipped}"
+    if result.invalid:
+        message += f"，数据异常跳过 {result.invalid}"
     if result.completeness is not None and result.completeness < 0.9:
         message += f"；字段完整率 {result.completeness:.0%} 低于 90%，请检查数据"
     source_repo.record_success(code, delta=result.inserted, message=message)
@@ -68,5 +70,6 @@ def collect_once(app: Flask) -> Dict[str, Any]:
         "total": len(rows),
         "inserted": result.inserted,
         "skipped": result.skipped,
+        "invalid": result.invalid,
         "source": code,
     }
