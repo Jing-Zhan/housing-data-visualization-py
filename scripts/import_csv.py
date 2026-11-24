@@ -36,10 +36,12 @@ def main() -> int:
         print("数据库连接失败，请检查 .env 中的 DB_* 配置")
         return 1
 
-    result = repo.insert_many(rows)
+    result = repo.insert_with_version(
+        rows, action="import", description=f"脚本导入 {args.file}"
+    )
     print(
-        f"写入完成：新增 {result.inserted} 条，"
-        f"跳过重复 {result.skipped} 条，当前总数 {repo.count()} 条"
+        f"写入完成：新增 {result.inserted} 条，跳过重复 {result.skipped} 条，"
+        f"异常 {result.invalid} 条，当前总数 {repo.count()} 条"
     )
     return 0
 

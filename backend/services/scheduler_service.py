@@ -16,7 +16,7 @@ _scheduler: Optional[BackgroundScheduler] = None
 def start_scheduler(app, interval_seconds: int = 30) -> BackgroundScheduler:
     """启动后台调度器，每隔 ``interval_seconds`` 秒执行一次采集落库。"""
     global _scheduler
-    if _scheduler is not None:
+    if _scheduler is not None and _scheduler.running:
         return _scheduler
 
     from backend.services.data_service import collect_once
@@ -33,3 +33,11 @@ def start_scheduler(app, interval_seconds: int = 30) -> BackgroundScheduler:
     _scheduler.start()
     app.logger.info("定时采集已启动，间隔 %s 秒", interval_seconds)
     return _scheduler
+
+
+def stop_scheduler() -> None:
+    """停止并释放调度器（测试与多实例场景使用）。"""
+    global _scheduler
+    if _scheduler is not None:
+        _scheduler.shutdown(wait=False)
+        _scheduler = None
