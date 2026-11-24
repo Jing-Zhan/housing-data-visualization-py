@@ -55,8 +55,8 @@ class CaseRepository:
     # 数据质量规则（需求 7.4）：必填字段与数值范围兜底
     REQUIRED_SLOTS = ("type", "content", "detailUrl")
     RANGE_SLOTS = {
-        "height": (1.0, 1000.0),     # 建筑面积（㎡）
-        "weight": (1.0, 100000.0),   # 挂牌总价（万）
+        "height": (10.0, 1000.0),    # 建筑面积（㎡），与需求 7.1 一致
+        "weight": (10.0, 10000.0),   # 挂牌总价（万），与需求 7.1 一致
     }
 
     @staticmethod
@@ -133,8 +133,9 @@ class CaseRepository:
             )
         payload = [tuple(row.get(slot) for slot in SLOTS) for row in valid_rows]
         sql = (
-            f"INSERT IGNORE INTO cases ({', '.join(SLOTS)}) "
-            f"VALUES ({', '.join(['%s'] * len(SLOTS))})"
+            f"INSERT INTO cases ({', '.join(SLOTS)}) "
+            f"VALUES ({', '.join(['%s'] * len(SLOTS))}) "
+            "ON DUPLICATE KEY UPDATE id = id"
         )
         conn = self._connect()
         try:
@@ -224,8 +225,9 @@ class CaseRepository:
             )
         payload = [tuple(row.get(slot) for slot in SLOTS) for row in valid_rows]
         sql = (
-            f"INSERT IGNORE INTO cases ({', '.join(SLOTS)}) "
-            f"VALUES ({', '.join(['%s'] * len(SLOTS))})"
+            f"INSERT INTO cases ({', '.join(SLOTS)}) "
+            f"VALUES ({', '.join(['%s'] * len(SLOTS))}) "
+            "ON DUPLICATE KEY UPDATE id = id"
         )
         conn = self._connect()
         try:
@@ -269,6 +271,13 @@ class CaseRepository:
         conn = self._connect()
         try:
             with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) AS n FROM cases_snapshot WHERE version_id = %s",
+                    (version_id,),
+                )
+                if cursor.fetchone()["n"] == 0:
+                    raise ValueError(f"版本 {version_id} 不存在或快照为空")
+
                 cursor.execute("DELETE FROM cases")
                 cursor.execute(
                     f"INSERT INTO cases (id, {cols}) "
